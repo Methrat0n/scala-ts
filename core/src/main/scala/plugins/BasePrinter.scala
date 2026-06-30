@@ -7,15 +7,40 @@ import io.github.scalats.core.{ Printer, Settings }
 import io.github.scalats.core.Internals.ListSet
 
 abstract class BasePrinter extends Printer {
-  private lazy val preludeUrl = sys.props.get("scala-ts.printer.prelude-url")
+  private var configuredPrelude: Option[String] = None
+  private var cachedPrelude: Option[String] = None
+
+  /**
+   * Sets the prelude content for this printer instance.
+   *
+   * When set, it takes precedence over the legacy
+   * `scala-ts.printer.prelude-url` system property.
+   */
+  private[scalats] def configurePrelude(content: String): Unit = {
+    configuredPrelude = Some(content)
+    cachedPrelude = None
+  }
+
+  private def preludeContent: Option[String] = synchronized {
+    if (cachedPrelude.isDefined) {
+      cachedPrelude
+    } else {
+      val content = configuredPrelude.orElse {
+        sys.props.get("scala-ts.printer.prelude-url").map { url =>
+          scala.io.Source.fromURL(url).mkString
+        }
+      }
+
+      cachedPrelude = content
+      content
+    }
+  }
 
   /**
    * If the system property `scala-ts.printer.import-pattern`, it's used to format.
    */
   protected def printPrelude(out: PrintStream): Unit =
-    preludeUrl.foreach { url =>
-      out.println(scala.io.Source.fromURL(url).mkString)
-    }
+    preludeContent.foreach(out.println)
 
   private lazy val preformatImport: (String, Boolean, String) => String =
     sys.props.get("scala-ts.printer.import-pattern") match {
