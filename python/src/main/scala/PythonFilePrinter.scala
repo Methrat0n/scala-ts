@@ -9,6 +9,7 @@ import io.github.scalats.plugins.BasePrinter
 
 final class PythonFilePrinter(outDir: File) extends BasePrinter {
   private val tracker = scala.collection.mutable.Map.empty[String, File]
+  private val initialized = scala.collection.mutable.Set.empty[String]
 
   private lazy val baseModule: Option[String] =
     sys.props.get("scala-ts.printer.python-base-module").filter(_.nonEmpty)
@@ -34,40 +35,42 @@ final class PythonFilePrinter(outDir: File) extends BasePrinter {
 
     val stream = new PrintStream(new FileOutputStream(f, true))
 
-    printPrelude(stream)
+    if (initialized.add(name)) {
+      printPrelude(stream)
 
-    if (
-      kind == Declaration.Interface || others.contains(Declaration.Interface)
-    ) {
-      stream.println("from dataclasses import dataclass")
-    } else if (
-      kind == Declaration.Singleton || others.contains(Declaration.Singleton)
-    ) {
-      stream.println("from dataclasses import dataclass  # noqa: F401")
-    }
+      if (
+        kind == Declaration.Interface || others.contains(Declaration.Interface)
+      ) {
+        stream.println("from dataclasses import dataclass")
+      } else if (
+        kind == Declaration.Singleton || others.contains(Declaration.Singleton)
+      ) {
+        stream.println("from dataclasses import dataclass  # noqa: F401")
+      }
 
-    stream.println("""import typing  # noqa: F401
+      stream.println("""import typing  # noqa: F401
 import datetime  # noqa: F401
 import time  # noqa: F401
 """)
 
-    if (requires.nonEmpty) {
-      baseModule match {
-        case Some(base) =>
-          printImports(conf, base + '.', kind, requires, stream) { mod =>
-            s"from ${base} import ${mod}"
-          }
+      if (requires.nonEmpty) {
+        baseModule match {
+          case Some(base) =>
+            printImports(conf, base + '.', kind, requires, stream) { mod =>
+              s"from ${base} import ${mod}"
+            }
 
-        case None =>
-          printImports(conf, "", kind, requires, stream) { mod =>
-            s"import ${mod}"
-          }
+          case None =>
+            printImports(conf, "", kind, requires, stream) { mod =>
+              s"import ${mod}"
+            }
+        }
+
+        stream.println()
       }
 
       stream.println()
     }
-
-    stream.println()
 
     stream
   }

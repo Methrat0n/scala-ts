@@ -9,6 +9,7 @@ import io.github.scalats.core.Settings
 // TODO: Printer that gather class and interface
 final class FilePrinter(outDir: File) extends BasePrinter {
   private val tracker = scala.collection.mutable.Map.empty[String, File]
+  private val initialized = scala.collection.mutable.Set.empty[String]
 
   @com.github.ghik.silencer.silent(".*kind.*never used.*")
   def apply(
@@ -33,32 +34,34 @@ final class FilePrinter(outDir: File) extends BasePrinter {
 
     val stream = new PrintStream(new FileOutputStream(f, true))
 
-    printPrelude(stream)
+    if (initialized.add(name)) {
+      printPrelude(stream)
 
-    // For module compatibility & self reference
-    stream.println(s"""declare var exports: any${lineSep}
+      // For module compatibility & self reference
+      stream.println(s"""declare var exports: any${lineSep}
 
 export const ns${name} = exports${lineSep}
 """)
 
-    printImports(conf, requires, stream) { tpe => s"./${tpe.name}" }
+      printImports(conf, requires, stream) { tpe => s"./${tpe.name}" }
 
-    if (requires.nonEmpty) {
-      val typeNaming = conf.typeNaming(conf, _: TypeRef)
-      val depMods = requires.map { tpe =>
-        // Required can contain different types with same name but not same kind
-        // (e.g. class and its companion object), which must be merge as single import there
+      if (requires.nonEmpty) {
+        val typeNaming = conf.typeNaming(conf, _: TypeRef)
+        val depMods = requires.map { tpe =>
+          // Required can contain different types with same name but not same kind
+          // (e.g. class and its companion object), which must be merge as single import there
 
-        s"${conf.indent}ns${typeNaming(tpe)},"
-      }
+          s"${conf.indent}ns${typeNaming(tpe)},"
+        }
 
-      stream.println("""
+        stream.println("""
 export const dependencyModules = [""")
 
-      depMods.toList.sorted.foreach(stream.println)
+        depMods.toList.sorted.foreach(stream.println)
 
-      stream.println(s"""]${lineSep}
+        stream.println(s"""]${lineSep}
 """)
+      }
     }
 
     stream

@@ -374,14 +374,6 @@ object ScalatsGeneratorPlugin extends AutoPlugin {
           cls
         }
 
-        scalatsPrinterPrelude.value match {
-          case Some(Left(content)) =>
-            io.IO.writeLines(target.value / "scala-ts-prelude.tmp", content)
-
-          case _ =>
-            ()
-        }
-
         // Declaration mapper
         val importResolvers =
           scalatsImportResolvers.value.map { cls =>
@@ -446,7 +438,8 @@ object ScalatsGeneratorPlugin extends AutoPlugin {
           importResolvers = importResolvers,
           declarationMappers = declMappers,
           typeMappers = typeMappers,
-          additionalClasspath = additionalClasspath
+          additionalClasspath = additionalClasspath,
+          printerPrelude = resolvePrinterPrelude(scalatsPrinterPrelude.value)
         )
 
         out = new PrintWriter(confFile)
@@ -493,20 +486,6 @@ object ScalatsGeneratorPlugin extends AutoPlugin {
             opts += s"-P:scalats:sys.${key}=${value}"
         }
 
-        scalatsPrinterPrelude.value match {
-          case Some(Right(url)) =>
-            opts += s"-P:scalats:sys.scala-ts.printer.prelude-url=${url.toString}"
-
-          case Some(_) => {
-            val f = target.value / "scala-ts-prelude.tmp"
-            // `f` will be written with content in `scalatsPrepare`
-
-            opts += s"-P:scalats:sys.scala-ts.printer.prelude-url=${f.toURI.toString}"
-          }
-
-          case _ =>
-        }
-
         opts.result()
       }
     },
@@ -532,6 +511,18 @@ object ScalatsGeneratorPlugin extends AutoPlugin {
   )
 
   @SuppressWarnings(Array("NullParameter"))
+  private def resolvePrinterPrelude(
+      prelude: Option[autoImport.PrinterPrelude]
+    ): Option[String] =
+    prelude.map {
+      case Left(lines) =>
+        lines.mkString("\n")
+
+      case Right(url) =>
+        scala.io.Source.fromURL(url).mkString
+    }
+
+  @SuppressWarnings(Array("NullParameter"))
   private def compilerPluginConf(
       settings: Settings,
       compilationRuleSet: SourceRuleSet,
@@ -540,7 +531,8 @@ object ScalatsGeneratorPlugin extends AutoPlugin {
       importResolvers: Seq[Class[_ <: ImportResolver]],
       declarationMappers: Seq[Class[_ <: DeclarationMapper]],
       typeMappers: Seq[Class[_ <: TypeMapper]],
-      additionalClasspath: Seq[URL]
+      additionalClasspath: Seq[URL],
+      printerPrelude: Option[String]
     ): Config = {
 
     import java.util.Arrays
@@ -586,6 +578,13 @@ object ScalatsGeneratorPlugin extends AutoPlugin {
         Arrays.asList(typeMappers.map(_.getName): _*)
       )
 
+    }
+
+    printerPrelude.foreach { content =>
+      repr.put(
+        "printerPrelude",
+        Arrays.asList(content.split("\n"): _*)
+      )
     }
 
     ConfigFactory.parseMap(repr)

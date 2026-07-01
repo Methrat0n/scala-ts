@@ -31,7 +31,8 @@ final class Configuration(
     val importResolvers: Seq[ImportResolver],
     val declarationMappers: Seq[DeclarationMapper],
     val typeMappers: Seq[TypeMapper],
-    val additionalClasspath: Seq[URL]) {
+    val additionalClasspath: Seq[URL],
+    val printerPrelude: Option[String] = None) {
 
   override def equals(that: Any): Boolean = that match {
     case other: Configuration => tupled == other.tupled
@@ -52,16 +53,18 @@ final class Configuration(
       this.importResolvers,
       this.declarationMappers,
       this.typeMappers,
-      this.additionalClasspath
+      this.additionalClasspath,
+      this.printerPrelude
     )
 
   private[plugins] lazy val tupled =
-    Tuple5(
+    Tuple6(
       settings,
       compilationRuleSet,
       typeRuleSet,
       printer,
-      additionalClasspath
+      additionalClasspath,
+      printerPrelude
     )
 }
 
@@ -78,7 +81,8 @@ object Configuration {
       importResolvers: Seq[ImportResolver] = Seq.empty,
       declarationMappers: Seq[DeclarationMapper] = Seq.empty,
       typeMappers: Seq[TypeMapper] = Seq.empty, // (TypeMapper.Defaults),
-      additionalClasspath: Seq[URL] = Seq.empty
+      additionalClasspath: Seq[URL] = Seq.empty,
+      printerPrelude: Option[String] = None
     ): Configuration =
     new Configuration(
       settings,
@@ -88,7 +92,8 @@ object Configuration {
       importResolvers,
       declarationMappers,
       typeMappers,
-      additionalClasspath
+      additionalClasspath,
+      printerPrelude
     )
 
   /**
@@ -183,7 +188,38 @@ object Configuration {
         }
       }
 
-    val printer = customPrinter.getOrElse(Printer.StandardOutput)
+    val printerPrelude: Option[String] =
+      try {
+        val lines = config.getStringList("printerPrelude").asScala
+
+        if (lines.isEmpty) None
+        else Some(lines.mkString("\n"))
+      } catch {
+        case NonFatal(_: ConfigException.Missing) =>
+          opt("printerPrelude")(config.getString(_)).filter(_.nonEmpty)
+
+        case NonFatal(cause) => {
+          logger.warning(
+            s"Fails to get printerPrelude: ${cause.getMessage}"
+          )
+          None
+        }
+      }
+
+    val printer = {
+      val p = customPrinter.getOrElse(Printer.StandardOutput)
+
+      printerPrelude.foreach { content =>
+        p match {
+          case bp: BasePrinter =>
+            bp.configurePrelude(content)
+
+          case _ =>
+        }
+      }
+
+      p
+    }
 
     def insts[T: ClassTag](key: String): Seq[T] =
       instances[T](logger, config, additionalClassLoader, key)
@@ -204,7 +240,8 @@ object Configuration {
       importResolvers,
       declarationMappers,
       typeMappers,
-      additionalClasspath
+      additionalClasspath,
+      printerPrelude
     )
   }
 
