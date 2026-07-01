@@ -8,33 +8,25 @@ import io.github.scalats.core.Internals.ListSet
 
 abstract class BasePrinter extends Printer {
   private var configuredPrelude: Option[String] = None
-  private var cachedPrelude: Option[String] = None
 
   /**
    * Sets the prelude content for this printer instance.
    *
    * When set, it takes precedence over the legacy
    * `scala-ts.printer.prelude-url` system property.
+   *
+   * Must be called before the first call to `printPrelude` on this instance
+   * (as `Configuration.load` already does).
    */
-  private[scalats] def configurePrelude(content: String): Unit = {
+  private[scalats] def configurePrelude(content: String): Unit =
     configuredPrelude = Some(content)
-    cachedPrelude = None
-  }
 
-  private def preludeContent: Option[String] = synchronized {
-    if (cachedPrelude.isDefined) {
-      cachedPrelude
-    } else {
-      val content = configuredPrelude.orElse {
-        sys.props.get("scala-ts.printer.prelude-url").map { url =>
-          scala.io.Source.fromURL(url).mkString
-        }
+  private lazy val preludeContent: Option[String] =
+    configuredPrelude.orElse {
+      sys.props.get("scala-ts.printer.prelude-url").map { url =>
+        scala.io.Source.fromURL(url).mkString
       }
-
-      cachedPrelude = content
-      content
     }
-  }
 
   /**
    * If the system property `scala-ts.printer.import-pattern`, it's used to format.
